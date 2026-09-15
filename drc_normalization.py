@@ -51,20 +51,58 @@ def drc_normalization(
 
 import pandas as pd
 
-df = pd.read_csv("timepoint_vallo_step111.csv")
-group_fields = ["Date", "Plt"]
-dose_field = "uM"
-od_field = "OD_corrected"
-time_field = "Time_h"
+# # DATA1
+# df = pd.read_csv("data/processed/timepoint_vallo_blank_corrected.csv")
+# group_fields = ["Date", "Plt"]
+# dose_field = "uM"
+# od_field = "OD_corrected"
+# time_field = "Time_h"
+
+# new_data = drc_normalization(
+#     df,
+#     group_fields=group_fields,
+#     time_field=time_field,
+#     od_field=od_field,
+#     dose_field=dose_field,
+#     normalized_od_col_name="OD_normalized",
+# )
+
+# new_data.to_csv("data/processed/timepoint_vallo_normalized.csv", index=False)
 
 
-new_data = drc_normalization(
-    df,
-    group_fields=group_fields,
-    time_field=time_field,
-    od_field=od_field,
-    dose_field=dose_field,
-    normalized_od_col_name="OD_normalized",
-)
+# # DATA2
+# df = pd.read_csv("data/processed/timepoint_sf_baseline_corrected.csv")
+# group_fields = ["Condition", "Ratio"]
+# dose_field = "XMIC"
+# od_field = "OD_corrected"
+# time_field = "Time"
 
-new_data.to_csv("timepoint_vallo_normalized.csv", index=False)
+# new_data = drc_normalization(
+#     df,
+#     group_fields=group_fields,
+#     time_field=time_field,
+#     od_field=od_field,
+#     dose_field=dose_field,
+#     normalized_od_col_name="OD_normalized",
+# )
+
+# new_data.to_csv("data/processed/timepoint_sf_normalized.csv", index=False)
+
+
+# # DATA3
+# df = pd.read_csv("data/results/custom_growth_2-FMA_toxicity_baseline_corrected.csv")
+# group_fields = ["Species", "Replicate"]
+# dose_field = "Dose"
+# od_field = "OD_corrected"
+# time_field = "Time"
+
+# new_data = drc_normalization(
+#     df,
+#     group_fields=group_fields,
+#     time_field=time_field,
+#     od_field=od_field,
+#     dose_field=dose_field,
+#     normalized_od_col_name="OD_normalized",
+# )
+
+# new_data.to_csv("data/results/custom_growth_2-FMA_toxicity_normalized.csv", index=False)
