@@ -2,28 +2,28 @@
 
 There are two ways to clean up your raw OD numbers:
 
-- **Blank Correction (Control Wells)** subtracts **across the plate** at one single timepoint.
-- **Baseline Correction (Time-Zero)** subtracts **down one well** over time.
+- **Blank Correction (Media/Control Wells)** subtracts **across the plate** at one single timepoint.
+- **Baseline Correction (Minimum Value)** subtracts **down one well** over time, using that well's own lowest reading.
 
 ---
 
-**Blank Correction (Control Wells)**
+**Blank Correction (Media/Control Wells)**
 
-- **How it works:** Find the well with no bacteria (`uM = -1`) at a specific hour on a specific plate. Subtract its OD from every bacterial well measured on that plate at that exact same hour.
-- **The Grouping:** Group by `Date` + `Plt/Replicate` + `Time_h` (Adding `Species` is harmless, but `Plt` already isolates the plate snapshot).
+- **How it works:** Find the well with no bacteria (`uM = -1`) on every specific plate/replicate for each hour. Subtract its OD from every bacterial well measured on that plate at that exact same hour.
+- **The Grouping:** Group by `Plt/Replicate` + `Species` + `Time_h`.
 - **The Math:**
   $$OD_{\text{corrected}} = RawOD(\text{Sample Well at Hour } t) - RawOD(\text{Control Well at Hour } t)$$
-- **When to use it:** When your plate has dedicated negative control wells (media only).
+- **When to use it:** When your data has dedicated media only wells.
 
 ---
 
-**Baseline Correction (Time-Zero)**
+**Baseline Correction (Minimum Value)**
 
-- **How it works:** Find a specific well's starting OD at Hour 0. Subtract that starting number from all future timepoints of that same physical well.
-- **The Grouping:** Group by `Date` + `Plt/Replicate` + `Species` + `Well`.
+- **How it works:** For each unique Replicate & Well, find LOWEST OD value across its entire time series (not necessarily at earliest time/ hour 0 of that replicate & well) . Subtract that minimum from every timepoint of that same physical well. This is more robust than using the Hour-0 reading alone, since any single reading can be a noisy outlier (a bubble, a pipetting blip) -- using the well's own lowest point means one bad reading can't set a bad baseline for the whole series.
+- **The Grouping:** Group by whatever uniquely identifies one physical well -- e.g. `Date` + `Plt/Replicate` + `Species` + `Well` (or `Plt_well`). Verify this actually isolates one well for your dataset: `df.groupby(group_fields + [dose_field])[well_field].nunique().max()` should be `1` if `dose_field` alone is enough; if it's `>1`, real well identity is required in the grouping.
 - **The Math:**
-  $$OD_{\text{corrected}} = RawOD(\text{Well at Hour } t) - RawOD(\text{Well at Hour } 0)$$
-- **When to use it:** When you don't have negative control wells.
+  $$OD_{\text{corrected}} = RawOD(\text{Well at Hour } t) - \min_t\big(RawOD(\text{Well})\big)$$
+- **When to use it:** When you don't have negative control wells, and you don't expect background to drift over time. Matches the default `min` method in `growthcurver`, a widely-used R package for bacterial growth curve analysis.
 
 ---
 
