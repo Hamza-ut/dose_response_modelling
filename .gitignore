@@ -7,3 +7,7 @@ code_testing.ipynb
 
 results/
 *How_to*
+
+# Biologist's reference files -- not ours to distribute in this repo
+after_preprocessing.csv
+shigella_preprocessing.ipynb
