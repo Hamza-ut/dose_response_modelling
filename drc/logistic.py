@@ -1,6 +1,6 @@
 from scipy.optimize import curve_fit
 import matplotlib.pyplot as plt
-from scipy.stats import t
+from scipy.stats import t, linregress
 import pandas as pd
 import numpy as np
 
@@ -12,38 +12,69 @@ def ll4_formula(x, b, c, d, e):
         b: Slope (Hill slope)
         c: Lower limit (Bottom asymptote)
         d: Upper limit (Top asymptote)
-        e: ED50 / EC50 (Effective dose / concentration)
+        e: Inflection point(Effective dose / concentration)
     """
     return c + (d - c) / (1.0 + (x / e) ** b)
 
 
-def fit_ll4(x_data, y_data):
-    """Fits a 4-parameter logistic function and returns optimal parameters and covariance."""
+def fit_ll4(x_data, y_data, use_bounds=False):
     x_data = np.asarray(x_data, dtype=float)
     y_data = np.asarray(y_data, dtype=float)
 
-    # Initial guesses mapped to (b, c, d, e)
-    b_slope_initial = 1.0
+    # read r_drc_vs_python_fitting.md to understand these initial guesses are chosen and why they are better then R_DRC in some cases
+    # LOWER AND UPPER INITIAL
     c_lower_initial = np.percentile(y_data, 5)
     d_upper_initial = np.percentile(y_data, 95)
-    e_ed50_initial = np.median(x_data)
-    initial_guess = [b_slope_initial, c_lower_initial, d_upper_initial, e_ed50_initial]
 
-    # Bounds mapped to match [b, c, d, e] order
-    # Lower bounds: [slope_min, lower_limit_min, upper_limit_min, ed50_min]
-    # Upper bounds: [slope_max, lower_limit_max, upper_limit_max, ed50_max]
-    lower_bounds = [0, np.min(y_data) - 1, np.min(y_data), 0]
-    upper_bounds = [100, np.max(y_data) + 1, np.max(y_data), np.max(x_data)]
-    bounds = (lower_bounds, upper_bounds)
-
-    popt, pcov = curve_fit(
-        ll4_formula,
-        x_data,
-        y_data,
-        p0=initial_guess,
-        bounds=bounds,
-        maxfev=5000,
+    # SLOPE INITIAL
+    # get rid of doses of zero or medium wells otherwise log will throw error
+    positive_mask = (
+        (y_data > c_lower_initial) & (y_data < d_upper_initial) & (x_data > 0)
     )
+
+    # EDGE CASE GUARD: too few points survive the trimming for a meaningful
+    # regression (need at least 2 degrees of freedom: n_used - 2 parameters
+    # being fit >= 2). Below that, linregress either returns a degenerate
+    # zero-residual "perfect fit" (n_used == 2) or silently NaN (n_used < 2)
+    # instead of raising -- catch it here with a clear message instead.
+    n_used = positive_mask.sum()
+    if n_used < 4:
+        raise ValueError(
+            f"Only {n_used} point(s) remain after excluding non-positive doses "
+            f"and points outside the 5th-95th percentile range; need at least "
+            f"4 for a meaningful slope regression. Dataset has {len(y_data)} "
+            f"points total."
+        )
+
+    log_x = np.log(x_data[positive_mask])
+    # subtract upper and lower limits from y_data and divide to turn them into ratio (compress the range), and finally take log of it to linearize it
+    # this is basically inversing of 4PL formula
+    transformed_y = np.log(
+        (d_upper_initial - y_data[positive_mask])
+        / (y_data[positive_mask] - c_lower_initial)
+    )
+    # take linear regression
+    regression = linregress(log_x, transformed_y)
+    b_slope_initial = regression.slope
+
+    # INFLECTION INITIAL
+    e_inflection_initial = np.exp(-regression.intercept / regression.slope)
+
+    initial_guess = [
+        b_slope_initial,
+        c_lower_initial,
+        d_upper_initial,
+        e_inflection_initial,
+    ]
+
+    fit_kwargs = {"p0": initial_guess, "maxfev": 5000}
+    if use_bounds:
+        # setting use_bounds=True swaps scipy's algorithm from LM to TRF
+        lower_bounds = [0, np.min(y_data) - 1, np.min(y_data), 0]
+        upper_bounds = [100, np.max(y_data) + 1, np.max(y_data), np.max(x_data)]
+        fit_kwargs["bounds"] = (lower_bounds, upper_bounds)
+
+    popt, pcov = curve_fit(ll4_formula, x_data, y_data, **fit_kwargs)
 
     return popt, pcov
 
@@ -119,55 +150,3 @@ def calculate_confidence_intervals(
         )
 
     return intervals
-
-
-# DATA1
-df = pd.read_csv("data/processed/ryegrass_metaremoved.csv")
-x_data = df["conc"]
-y_data = df["rootl"]
-
-# # DATA2
-# df = pd.read_csv("data/processed/lepidium_metaremoved.csv")
-# x_data = df["conc"]
-# y_data = df["weight"]
-# four_parameter_logistic_regression(x_data, y_data)
-
-# # DATA3
-# df = pd.read_csv("data/processed/timepoint_vallo_9.5to10.5.csv")
-# x_data = df["uM"]
-# y_data = df["OD_normalized"]
-
-
-results = fit_ll4(x_data, y_data)
-b_slope_fit, c_lower_fit, d_upper_fit, e_ed50_fit = results[0]
-print(f"b(Slope)      = {b_slope_fit:.5f}")
-print(f"c(Lower)      = {c_lower_fit:.5f}")
-print(f"d(Upper)      = {d_upper_fit:.5f}")
-print(f"e(ED50/EC50)  = {e_ed50_fit:.5f}")
-
-
-std_errors, relative_std_errors = compute_parameter_errors(results[0], results[1])
-print(
-    f"Standard Errors(b,c,d,e): {std_errors[0]:.5f}, {std_errors[1]:.5f}, {std_errors[2]:.5f}, {std_errors[3]:.5f}"
-)
-print(
-    f"Percentage/Relative Standard Errors(b,c,d,e): {relative_std_errors[0]:.2f}%, {relative_std_errors[1]:.2f}%, {relative_std_errors[2]:.2f}%, {relative_std_errors[3]:.2f}%"
-)
-
-plot_covariance_heatmap(results[1])
-
-r_square, rmse = calculate_fit_metrics(y_data, x_data, results[0])
-print(f"R²: {r_square:.5f}")
-print(f"RMSE: {rmse:.5f}")
-
-
-names = ["b(Slope)", "c(Lower)", "d(Upper)", "e(ED50/EC50)"]
-confidence_percentage = 95
-confidence_intervals = calculate_confidence_intervals(
-    y_data, results[0], results[1], names, confidence_percentage
-)
-for interval in confidence_intervals:
-    print(
-        f"{interval['parameter']}: "
-        f"{confidence_percentage}% Confidence Interval [{interval['lower_bound']:.5f} to {interval['upper_bound']:.5f}]"
-    )
